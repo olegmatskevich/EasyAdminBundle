@@ -111,28 +111,49 @@ final class EntityFactory
 
     private function doCreate(?string $entityFqcn = null, $entityId = null, ?string $entityPermission = null, $entityInstance = null): EntityDto
     {
-        if (null === $entityInstance && null !== $entityFqcn) {
-            $entityInstance = null === $entityId ? null : $this->getEntityInstance($entityFqcn, $entityId);
-        }
-
-        if (null !== $entityInstance && null === $entityFqcn) {
-            if ($entityInstance instanceof Proxy) {
-                $entityInstance->__load();
+        try {
+            if (null === $entityInstance && null !== $entityFqcn) {
+                $entityInstance = null === $entityId ? null : $this->getEntityInstance($entityFqcn, $entityId);
             }
 
-            $entityFqcn = ClassUtils::getClass($entityInstance);
-        }
+            if (null !== $entityInstance && null === $entityFqcn) {
+                if ($entityInstance instanceof Proxy) {
+                    $entityInstance->__load();
+                }
 
-        $entityMetadata = $this->getEntityMetadata($entityFqcn);
-        $entityDto = new EntityDto($entityFqcn, $entityMetadata, $entityPermission, $entityInstance);
+                $entityFqcn = ClassUtils::getClass($entityInstance);
+            }
 
-        if (!$this->authorizationChecker->isGranted(Permission::EA_ACCESS_ENTITY, $entityDto)) {
+
+            $entityMetadata = $this->getEntityMetadata($entityFqcn);
+            $entityDto = new EntityDto($entityFqcn, $entityMetadata, $entityPermission, $entityInstance);
+
+            if (!$this->authorizationChecker->isGranted(Permission::EA_ACCESS_ENTITY, $entityDto)) {
+                $entityDto->markAsInaccessible();
+            }
+
+            $this->eventDispatcher->dispatch(new AfterEntityBuiltEvent($entityDto));
+            return $entityDto;
+        } catch (\Exception $e) {
+            if (null === $entityInstance && null !== $entityFqcn) {
+                $entityInstance = null === $entityId ? null : $this->getEntityInstance($entityFqcn, $entityId);
+            }
+
+            if (null !== $entityInstance && null === $entityFqcn) {
+                if ($entityInstance instanceof Proxy) {
+                    $entityInstance->__load();
+                }
+
+                $entityFqcn = ClassUtils::getClass($entityInstance);
+            }
+
+            $entityMetadata = $this->getEntityMetadata($entityFqcn);
+            $entityDto = new EntityDto($entityFqcn, $entityMetadata, $entityPermission, $entityInstance);
+
             $entityDto->markAsInaccessible();
+            return $entityDto;
+
         }
-
-        $this->eventDispatcher->dispatch(new AfterEntityBuiltEvent($entityDto));
-
-        return $entityDto;
     }
 
     private function getEntityManager(string $entityFqcn): ObjectManager
